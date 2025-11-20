@@ -1,425 +1,70 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>ScreenShare — Browser-only (P2P)</title>
-<link rel="icon" href="data:;base64,iVBORw0KGgo=">
+<meta charset="UTF-8">
+<title>Tab Mirroring</title>
 <style>
-  :root{
-    --bg:#0b0f14;
-    --panel:#0f1720;
-    --muted:#9aa6b2;
-    --accent:#7c3aed;
-    --glass: rgba(255,255,255,0.03);
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;color:#e6eef6;background:linear-gradient(180deg,#07101a 0%, #07121a 100%);-webkit-font-smoothing:antialiased}
-  .wrap{max-width:1100px;margin:28px auto;padding:20px;display:grid;grid-template-columns:1fr 380px;gap:20px}
-  @media (max-width:900px){.wrap{grid-template-columns:1fr;padding:14px}}
-  header{grid-column:1/-1;display:flex;align-items:center;gap:12px}
-  header h1{margin:0;font-size:18px}
-  header p{margin:0;color:var(--muted);font-size:13px}
-  .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border:1px solid rgba(255,255,255,0.03);padding:16px;border-radius:12px;backdrop-filter: blur(6px)}
-  .left .controls{display:flex;gap:8px;flex-wrap:wrap}
-  button{background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);color:#eaf2ff;padding:10px 12px;border-radius:10px;cursor:pointer;font-weight:600}
-  button.strong{background:linear-gradient(90deg,var(--accent),#5b21b6);box-shadow:0 6px 18px rgba(124,58,237,0.18)}
-  button.warn{background:transparent;border:1px solid rgba(255,80,80,0.12);color:#ffb4b4}
-  .muted{color:var(--muted);font-size:13px}
-  .video-wrap{margin-top:12px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.02)}
-  video{width:100%;height:auto;background:#000;display:block}
-  .side{display:flex;flex-direction:column;gap:12px}
-  .list{max-height:60vh;overflow:auto;padding:8px;display:flex;flex-direction:column;gap:10px}
-  .entry{background:var(--panel);padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.02);display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start}
-  textarea{width:100%;min-height:68px;background:transparent;border:1px dashed rgba(255,255,255,0.03);color:#eaf2ff;padding:8px;border-radius:8px;resize:vertical;font-family:monospace;font-size:12px}
-  .small{font-size:12px;color:var(--muted)}
-  .row{display:flex;gap:8px;align-items:center}
-  .qr{width:96px;height:96px;display:grid;place-items:center;background:var(--glass);border-radius:8px;border:1px solid rgba(255,255,255,0.02)}
-  .help{font-size:13px;color:var(--muted);line-height:1.4}
-  a.link{color:var(--accent);text-decoration:none}
-  footer{grid-column:1/-1;color:var(--muted);font-size:12px;margin-top:6px}
-  .controls .muted{align-self:center}
+    body {
+        margin: 0;
+        background: #0e0e0e;
+        color: white;
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        text-align: center;
+    }
+    button {
+        background: #222;
+        border: 1px solid #444;
+        padding: 15px 25px;
+        font-size: 18px;
+        color: white;
+        border-radius: 8px;
+    }
+    video {
+        width: 90vw;
+        max-height: 80vh;
+        margin-top: 20px;
+        background: black;
+        border-radius: 10px;
+    }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <div style="flex:1">
-      <h1>ScreenShare — Browser P2P (kein Server)</h1>
-      <p class="muted">Teile deinen Bildschirm per WebRTC. Signalisierung per Copy/Paste oder QR (kein Server). Funktioniert auf Mobil & Desktop.</p>
-    </div>
-    <div style="text-align:right">
-      <div class="muted">LAN-ready • Dark UI • Responsive</div>
-    </div>
-  </header>
 
-  <div class="panel left">
-    <div class="controls">
-      <button id="btnStartShare" class="strong">Share screen</button>
-      <button id="btnStopAll" class="warn">Stop all shares</button>
-      <div style="flex:1" class="muted">Erzeuge für jeden Viewer ein eigenes Offer → Viewer antwortet mit Answer (paste zurück)</div>
-    </div>
+<h2>Tab-Mirroring</h2>
+<p>Teile einen anderen Browser-Tab.</p>
 
-    <div class="video-wrap" id="previewWrap" style="margin-top:12px">
-      <video id="localPreview" autoplay muted playsinline></video>
-    </div>
+<button onclick="startTabShare()">Tab teilen</button>
 
-    <div style="margin-top:12px" class="help">
-      <strong>Kurzanleitung</strong>
-      <ol class="muted">
-        <li>Auf Sender: „Share screen“ → wähle Bildschirm/Tab/Window.</li>
-        <li>Für jeden Viewer: „Neues Offer erzeugen“ → kopiere Offer oder zeige QR.</li>
-        <li>Auf Viewer: Offer einfügen → „Create Answer“ → gib Answer zurück an Sender.</li>
-        <li>Sender: Answer einfügen → Verbindung steht.</li>
-      </ol>
-    </div>
-  </div>
-
-  <aside class="side">
-    <div class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><strong>Connections</strong><div class="small">Angebote / Antworten verwalten</div></div>
-        <div class="small" id="connCount">0 active</div>
-      </div>
-      <div style="margin-top:10px">
-        <button id="btnNewOffer">New Offer for viewer</button>
-      </div>
-      <div class="list" id="offersList" aria-live="polite"></div>
-    </div>
-
-    <div class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><strong>Viewer</strong><div class="small">Paste an Offer (from sender)</div></div>
-      </div>
-      <div style="margin-top:10px">
-        <textarea id="viewerOffer" placeholder="Paste Offer (base64) here"></textarea>
-        <div class="row" style="margin-top:8px">
-          <button id="btnCreateAnswer">Create Answer</button>
-          <button id="btnDecodeExample">Decode Sample</button>
-          <div class="small" style="flex:1"></div>
-        </div>
-        <div style="margin-top:8px" class="small">Answer (paste back to sender):</div>
-        <textarea id="viewerAnswer" readonly placeholder="Answer appears here after creation"></textarea>
-        <div style="margin-top:8px" class="row">
-          <div class="qr" id="viewerQR">QR</div>
-          <div class="small">Scan to send Answer quickly</div>
-        </div>
-      </div>
-    </div>
-
-    <footer>Hinweis: Für beste Erfahrung STUN verwendet (Google STUN). Bei Netzwerkproblemen LAN-Firewall prüfen.</footer>
-  </aside>
-</div>
-
-<!-- QR library (small) -->
-<script src="https://unpkg.com/qrcode@1.5.1/build/qrcode.min.js"></script>
+<video id="stream" autoplay playsinline></video>
 
 <script>
-/*
-  ScreenShare — static, manual signaling via base64 JSON
-  - Works without any server
-  - For each viewer: sender creates an offer, viewer returns an answer
-  - Uses trickle-free ICE (waits until ICE gathering finishes) to embed candidates in SDP
-*/
+async function startTabShare() {
+    try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+            alert("Tab-Sharing wird in diesem Browser nicht unterstützt.");
+            return;
+        }
 
-const cfg = {
-  iceServers: [{urls: "stun:stun.l.google.com:19302"}]
-};
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { displaySurface: "browser" },
+            audio: false
+        });
 
-let localStream = null;
-const offers = new Map(); // id -> {pc, offerSdp, state}
+        document.getElementById("stream").srcObject = stream;
 
-const el = id => document.getElementById(id);
-const btnStartShare = el('btnStartShare');
-const btnStopAll = el('btnStopAll');
-const btnNewOffer = el('btnNewOffer');
-const offersList = el('offersList');
-const localPreview = el('localPreview');
-const connCount = el('connCount');
-
-btnStartShare.onclick = async () => {
-  try {
-    if (localStream) {
-      console.log('Already sharing');
-      return;
+        stream.getVideoTracks()[0].onended = () => {
+            alert("Tab Mirroring wurde beendet.");
+        };
+    } catch (err) {
+        alert("Fehler: " + err);
     }
-    localStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: true});
-    localPreview.srcObject = localStream;
-    localPreview.play().catch(()=>{});
-    updateStatus();
-  } catch(err) {
-    alert('Fehler beim Zugriff auf Bildschirm: ' + err.message);
-  }
-};
-
-btnStopAll.onclick = async () => {
-  // stop local stream
-  if (localStream) {
-    localStream.getTracks().forEach(t=>t.stop());
-    localStream = null;
-    localPreview.srcObject = null;
-  }
-  // close peer connections
-  for (const [id, item] of offers.entries()) {
-    try { item.pc.close(); } catch(e){}
-  }
-  offers.clear();
-  renderOffers();
-  updateStatus();
-};
-
-btnNewOffer.onclick = async () => {
-  if (!localStream) {
-    alert('Bitte zuerst "Share screen" klicken und den Bildschirm auswählen.');
-    return;
-  }
-  createOfferBlock();
-};
-
-function updateStatus(){
-  connCount.textContent = `${offers.size} active`;
 }
-
-/* UTIL: base64 encode/decode JSON (UTF-8 safe) */
-function encodeJson(obj){
-  const str = JSON.stringify(obj);
-  return btoa(unescape(encodeURIComponent(str)));
-}
-function decodeJson(b64){
-  const str = decodeURIComponent(escape(atob(b64)));
-  return JSON.parse(str);
-}
-
-/* Wait until ICE gathering completes (trickle-free) */
-function waitForIceGatheringComplete(pc, timeout = 10000){
-  return new Promise((resolve, reject) => {
-    if (pc.iceGatheringState === 'complete') return resolve();
-    const onIce = (e) => {
-      if (pc.iceGatheringState === 'complete') {
-        pc.removeEventListener('icegatheringstatechange', onIce);
-        clearTimeout(timer);
-        resolve();
-      }
-    };
-    pc.addEventListener('icegatheringstatechange', onIce);
-    const timer = setTimeout(()=> {
-      pc.removeEventListener('icegatheringstatechange', onIce);
-      resolve(); // resolve anyway — best effort
-    }, timeout);
-  });
-}
-
-/* Create a new Offer, store PC, and render UI */
-async function createOfferBlock(){
-  const id = Math.random().toString(36).slice(2,9);
-  const pc = new RTCPeerConnection(cfg);
-  pc.onconnectionstatechange = ()=>{
-    console.log('pc state', id, pc.connectionState);
-    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
-      // keep UI; user can remove
-    }
-  };
-  // add local tracks
-  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-
-  // optional: allow incoming datachannel messages
-  pc.ondatachannel = (ev) => {
-    const ch = ev.channel;
-    ch.onmessage = (m) => console.log('data msg', m.data);
-  };
-
-  // create datachannel for potential messaging
-  const dc = pc.createDataChannel('msg');
-  dc.onopen = ()=>console.log('dc open', id);
-  dc.onmessage = (e)=>console.log('msg from viewer', e.data);
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  // wait for ICE candidates to gather (so we can paste a single blob)
-  await waitForIceGatheringComplete(pc, 12000);
-
-  const localDesc = pc.localDescription;
-  const payload = {type:'offer', sdp: localDesc.sdp, created: Date.now(), id};
-
-  offers.set(id, {pc, payload, state:'offer-created'});
-  renderOffers();
-  updateStatus();
-  // auto-open clipboard for convenience (best-effort)
-}
-
-/* Render the offers list */
-function renderOffers(){
-  offersList.innerHTML = '';
-  for (const [id, item] of offers.entries()){
-    const wrapper = document.createElement('div');
-    wrapper.className = 'entry';
-    const left = document.createElement('div');
-    left.style.display='flex'; left.style.flexDirection='column'; left.style.gap='8px';
-    const title = document.createElement('div');
-    title.innerHTML = `<strong>Viewer ${id}</strong><div class="small">Status: ${item.state}</div>`;
-    left.appendChild(title);
-
-    const ta = document.createElement('textarea');
-    ta.readOnly = true;
-    ta.value = encodeJson(item.payload);
-    left.appendChild(ta);
-
-    const row = document.createElement('div');
-    row.className='row';
-    const copyBtn = document.createElement('button');
-    copyBtn.textContent='Copy Offer';
-    copyBtn.onclick = ()=>{ navigator.clipboard.writeText(ta.value).then(()=>copyBtn.textContent='Copied'); setTimeout(()=>copyBtn.textContent='Copy Offer',900); };
-
-    const qrBox = document.createElement('div');
-    qrBox.className='qr';
-    QRCode.toCanvas( ta.value, {width:88}, (err, canvas) => {
-      if (!err) { qrBox.innerHTML=''; qrBox.appendChild(canvas); }
-    });
-
-    const pasteAnswerBtn = document.createElement('button');
-    pasteAnswerBtn.textContent='Paste Answer';
-    pasteAnswerBtn.onclick = async () => {
-      const answer = prompt('Füge den Answer (base64) vom Viewer hier ein:');
-      if (!answer) return;
-      try {
-        const ansObj = decodeJson(answer);
-        if (ansObj.type !== 'answer') throw new Error('Ungültiger Answer-Typ');
-        await item.pc.setRemoteDescription({type:'answer', sdp: ansObj.sdp});
-        item.state = 'connected';
-        renderOffers();
-      } catch(err) {
-        alert('Fehler beim Setzen der Answer: ' + err.message);
-      }
-    };
-
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent='Close';
-    closeBtn.onclick = () => {
-      try { item.pc.close(); } catch(e){}
-      offers.delete(id);
-      renderOffers();
-      updateStatus();
-    };
-
-    row.appendChild(copyBtn);
-    row.appendChild(pasteAnswerBtn);
-    row.appendChild(closeBtn);
-
-    left.appendChild(row);
-
-    const right = document.createElement('div');
-    right.style.display='flex'; right.style.flexDirection='column'; right.style.alignItems='center'; right.style.gap='8px';
-    right.appendChild(qrBox);
-
-    wrapper.appendChild(left);
-    wrapper.appendChild(right);
-    offersList.appendChild(wrapper);
-  }
-}
-
-/* ---------- Viewer flow (paste Offer -> create Answer) ---------- */
-const viewerOffer = el('viewerOffer');
-const viewerAnswer = el('viewerAnswer');
-const viewerQR = el('viewerQR');
-const btnCreateAnswer = el('btnCreateAnswer');
-const btnDecodeExample = el('btnDecodeExample');
-
-btnCreateAnswer.onclick = async () => {
-  const txt = viewerOffer.value.trim();
-  if (!txt) { alert('Bitte Offer einfügen'); return; }
-  let obj;
-  try { obj = decodeJson(txt); } catch(e) { alert('Ungültiges Offer-Format'); return; }
-  if (obj.type !== 'offer') { alert('Das gelesene Objekt ist kein Offer'); return; }
-
-  // create pc
-  const pc = new RTCPeerConnection(cfg);
-
-  // show incoming remote track(s)
-  pc.ontrack = (ev) => {
-    // create a video element to show
-    ensureViewerVideo(ev.streams[0]);
-  };
-
-  // datachannel handling
-  pc.ondatachannel = (ev) => {
-    const ch = ev.channel;
-    ch.onmessage = (m)=>console.log('msg', m.data);
-  };
-
-  await pc.setRemoteDescription({type:'offer', sdp: obj.sdp});
-
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  await waitForIceGatheringComplete(pc, 12000);
-
-  const localDesc = pc.localDescription;
-  const payload = {type:'answer', sdp: localDesc.sdp, created: Date.now()};
-  const encoded = encodeJson(payload);
-  viewerAnswer.value = encoded;
-
-  // QR
-  QRCode.toCanvas(encoded, {width:88}, (err, canvas) => {
-    if (!err) { viewerQR.innerHTML=''; viewerQR.appendChild(canvas); }
-  });
-
-  // optional: copy to clipboard
-  try { await navigator.clipboard.writeText(encoded); } catch(e){}
-
-  // Keep the pc alive; the viewer can refresh page to reset
-  // (we don't store PCs globally — it's fine for single viewer)
-};
-
-/* show preview video for viewer */
-function ensureViewerVideo(stream){
-  let vid = document.getElementById('viewerRemote');
-  if (!vid) {
-    vid = document.createElement('video');
-    vid.id = 'viewerRemote';
-    vid.autoplay = true;
-    vid.playsInline = true;
-    vid.controls = false;
-    vid.style.width = '100%';
-    vid.style.maxHeight = '60vh';
-    vid.style.borderRadius = '10px';
-    vid.style.marginTop = '10px';
-    // insert into left panel under preview
-    const p = document.querySelector('.video-wrap');
-    p.appendChild(vid);
-  }
-  vid.srcObject = stream;
-}
-
-/* decode example (for debugging) */
-btnDecodeExample.onclick = () => {
-  try {
-    const ex = viewerOffer.value.trim();
-    if (!ex) {
-      alert('Bitte Offer in das obere Feld einfügen (oder Testdaten einfügen).');
-      return;
-    }
-    const obj = decodeJson(ex);
-    alert('Decoded:\nType: ' + obj.type + '\nCreated: ' + new Date(obj.created).toLocaleString());
-  } catch(e) {
-    alert('Fehler: ' + e.message);
-  }
-};
-
-/* Accessibility: allow dropping a base64 text file onto viewerOffer */
-window.addEventListener('paste', (e) => {
-  const t = (e.clipboardData||window.clipboardData).getData('text');
-  if (t && t.length>100 && t.includes('{"type":"offer"')) {
-    viewerOffer.value = encodeJson(decodeJson(t)); // normalize
-  }
-});
-
-/* On page unload, close connections */
-window.addEventListener('beforeunload', ()=>{
-  for (const [id, item] of offers.entries()) {
-    try { item.pc.close(); } catch(e){}
-  }
-});
-
 </script>
+
 </body>
 </html>
