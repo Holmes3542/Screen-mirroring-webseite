@@ -1,0 +1,18 @@
+{
+  "name": "simple-stream-app",
+  "version": "1.0.0",
+  "description": "Einfache Streaming App mit Ton-Support",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "socket.io": "^4.7.2",
+    "simple-peer": "^9.11.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
