@@ -1,7 +1,7 @@
 {
-  "name": "simple-stream-app",
+  "name": "myvideoshop",
   "version": "1.0.0",
-  "description": "Einfache Streaming App mit Ton-Support",
+  "description": "Simple Streaming App with Audio Fix",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
