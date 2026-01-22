@@ -923,4 +923,635 @@
                 }
             });
             
-            socket.on('
+            socket.on('active-streams', (streams) => {
+                activeStreams = streams;
+                updateActiveStreamsList();
+                updateStreamsContainer();
+            });
+            
+            socket.on('error', (data) => {
+                console.error('❌ Socket Error:', data.message);
+                alert('Fehler: ' + data.message);
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('🔌 Vom Server getrennt');
+                updateConnectionStatus('disconnected');
+            });
+        }
+
+        // ==================== STREAMING FUNKTIONEN ====================
+        async function startStreaming() {
+            if (isBroadcasting) return;
+            
+            try {
+                const enableAudio = elements.enableAudio.checked;
+                const audioDevice = elements.audioInput.value;
+                
+                let stream;
+                
+                if (streamType === 'screen') {
+                    // Bildschirm teilen
+                    stream = await navigator.mediaDevices.getDisplayMedia({
+                        video: { frameRate: 30 },
+                        audio: enableAudio
+                    });
+                    
+                    // Falls Audio nicht mitkommt, separat hinzufügen
+                    if (enableAudio && stream.getAudioTracks().length === 0) {
+                        try {
+                            const audioStream = await navigator.mediaDevices.getUserMedia({
+                                audio: audioDevice ? { deviceId: { exact: audioDevice } } : true
+                            });
+                            audioStream.getAudioTracks().forEach(track => {
+                                stream.addTrack(track);
+                            });
+                        } catch (audioError) {
+                            console.log('Audio konnte nicht hinzugefügt werden:', audioError);
+                        }
+                    }
+                } else {
+                    // Kamera
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'user', frameRate: 30 },
+                        audio: enableAudio ? (audioDevice ? { deviceId: { exact: audioDevice } } : true) : false
+                    });
+                }
+                
+                // TON ERZWINGEN - WICHTIG!
+                forceAudioUnmute(stream);
+                
+                localStream = stream;
+                elements.localVideo.srcObject = stream;
+                elements.localVideo.muted = true; // Lokal stumm
+                await elements.localVideo.play();
+                elements.noLocalVideo.classList.add('hidden');
+                
+                // Audio-Level Überwachung starten
+                startAudioMonitoring(stream);
+                
+                // Stream beim Server starten
+                socket.emit('start-stream', currentStreamId);
+                isBroadcasting = true;
+                
+                // UI aktualisieren
+                elements.btnStartStream.disabled = true;
+                elements.btnStopStream.disabled = false;
+                elements.streamStatus.innerHTML = '<span class="status status-broadcasting">Live</span>';
+                elements.previewStatus.innerHTML = '<span class="status status-broadcasting">Live</span>';
+                
+                console.log('✅ Streaming gestartet mit Ton:', stream.getAudioTracks().length > 0);
+                
+            } catch (error) {
+                console.error('❌ Fehler beim Starten des Streams:', error);
+                alert('Fehler: ' + error.message);
+            }
+        }
+
+        function stopStreaming() {
+            if (!isBroadcasting) return;
+            
+            // Stream stoppen
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            
+            // Audio stoppen
+            stopAudioMonitoring();
+            
+            // Video zurücksetzen
+            elements.localVideo.srcObject = null;
+            elements.noLocalVideo.classList.remove('hidden');
+            
+            // Server informieren
+            socket.emit('stop-stream', currentStreamId);
+            
+            // Peer Connections schließen
+            peerConnections.forEach(peer => peer.destroy());
+            peerConnections.clear();
+            
+            // UI zurücksetzen
+            isBroadcasting = false;
+            viewerCount = 0;
+            elements.viewerCount.textContent = '0';
+            elements.btnStartStream.disabled = false;
+            elements.btnStopStream.disabled = true;
+            elements.streamStatus.innerHTML = '<span class="status status-offline">Offline</span>';
+            elements.previewStatus.innerHTML = '<span class="status status-offline">Stopp</span>';
+            
+            console.log('🛑 Streaming gestoppt');
+        }
+
+        // ==================== WATCH FUNKTIONEN ====================
+        async function connectToStream() {
+            const streamId = elements.inputStreamId.value.trim();
+            if (!streamId) {
+                alert('Bitte eine Stream-ID eingeben!');
+                return;
+            }
+            
+            if (isWatching) {
+                disconnectFromStream();
+            }
+            
+            elements.connectionStatus.innerHTML = '<span class="status status-broadcasting">Verbinde...</span>';
+            elements.btnConnect.disabled = true;
+            
+            socket.emit('join-stream', streamId);
+            isWatching = true;
+        }
+
+        function disconnectFromStream() {
+            if (remoteStream) {
+                remoteStream.getTracks().forEach(track => track.stop());
+                remoteStream = null;
+            }
+            
+            elements.remoteVideo.srcObject = null;
+            elements.noRemoteVideo.classList.remove('hidden');
+            
+            peerConnections.forEach(peer => peer.destroy());
+            peerConnections.clear();
+            
+            isWatching = false;
+            elements.btnConnect.disabled = false;
+            elements.btnDisconnect.disabled = true;
+            elements.connectionStatus.innerHTML = '<span class="status status-offline">Nicht verbunden</span>';
+            elements.playerStatus.innerHTML = '<span class="status status-offline">Getrennt</span>';
+            elements.audioInfo.textContent = 'Verbindung getrennt';
+        }
+
+        // ==================== WEBRTC PEER CONNECTIONS ====================
+        function createPeerConnection(peerId, isInitiator) {
+            return new Promise((resolve) => {
+                console.log(`🔗 Erstelle Peer Connection mit ${peerId} (Initiator: ${isInitiator})`);
+                
+                const config = {
+                    initiator: isInitiator,
+                    trickle: true,
+                    config: {
+                        iceServers: [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:global.stun.twilio.com:3478' }
+                        ]
+                    }
+                };
+                
+                if (isInitiator && localStream) {
+                    config.stream = localStream;
+                }
+                
+                const peer = new SimplePeer(config);
+                
+                peer.on('signal', (data) => {
+                    console.log(`📡 Sende ${data.type} an ${peerId}`);
+                    socket.emit('webrtc-signal', {
+                        to: peerId,
+                        signal: data,
+                        type: data.type
+                    });
+                });
+                
+                peer.on('stream', (stream) => {
+                    console.log('📺 Stream erhalten:', stream);
+                    remoteStream = stream;
+                    
+                    // TON BEIM EMPFÄNGER ERZWINGEN
+                    forceRemoteAudioUnmute(stream);
+                    
+                    elements.remoteVideo.srcObject = stream;
+                    elements.remoteVideo.muted = false;
+                    elements.remoteVideo.volume = 1.0;
+                    
+                    elements.remoteVideo.play().catch(e => {
+                        console.log('⚠️ Autoplay blockiert, versuche mit Mute...');
+                        elements.remoteVideo.muted = true;
+                        elements.remoteVideo.play().then(() => {
+                            setTimeout(() => {
+                                elements.remoteVideo.muted = false;
+                            }, 1000);
+                        });
+                    });
+                    
+                    elements.noRemoteVideo.classList.add('hidden');
+                    elements.btnDisconnect.disabled = false;
+                    elements.connectionStatus.innerHTML = '<span class="status status-online">Verbunden</span>';
+                    elements.playerStatus.innerHTML = '<span class="status status-online">Spielt ab</span>';
+                    elements.audioInfo.textContent = '🎵 Ton wird empfangen ✓';
+                    
+                    // Audio-Überwachung starten
+                    monitorRemoteAudio(stream);
+                });
+                
+                peer.on('connect', () => {
+                    console.log(`✅ WebRTC verbunden mit ${peerId}`);
+                    peerConnections.set(peerId, peer);
+                    resolve(peer);
+                });
+                
+                peer.on('close', () => {
+                    console.log(`🔌 Verbindung geschlossen mit ${peerId}`);
+                    peerConnections.delete(peerId);
+                });
+                
+                peer.on('error', (err) => {
+                    console.error(`❌ Peer Error mit ${peerId}:`, err);
+                });
+                
+                // Timeout für Verbindung
+                setTimeout(() => {
+                    if (!peer.connected && !peer.destroyed) {
+                        console.log(`⏰ Timeout für Verbindung mit ${peerId}`);
+                        peer.destroy();
+                    }
+                }, 30000);
+            });
+        }
+
+        // ==================== TON-FUNKTIONEN ====================
+        function forceAudioUnmute(stream) {
+            const audioTracks = stream.getAudioTracks();
+            
+            if (audioTracks.length === 0) {
+                console.log('⚠️ Keine Audio-Tracks im Stream');
+                return;
+            }
+            
+            console.log(`🔊 ${audioTracks.length} Audio-Track(s) gefunden, aktiviere...`);
+            
+            audioTracks.forEach((track, index) => {
+                // Track immer aktivieren
+                track.enabled = true;
+                
+                // Verhindere, dass der Track disabled wird
+                const originalEnabled = Object.getOwnPropertyDescriptor(
+                    Object.getPrototypeOf(track), 'enabled'
+                );
+                
+                Object.defineProperty(track, 'enabled', {
+                    get: originalEnabled.get,
+                    set: function(value) {
+                        console.log(`🔊 Audio-Track ${index}: Versuche auf ${value} zu setzen, bleibe aber aktiv`);
+                        originalEnabled.set.call(this, true); // Immer true!
+                    }
+                });
+                
+                // Event-Listener für Track-Ende
+                track.addEventListener('ended', () => {
+                    console.log(`⚠️ Audio-Track ${index} wurde beendet, versuche neu...`);
+                    // Hier könnte man versuchen, den Track neu zu starten
+                });
+                
+                console.log(`✅ Audio-Track ${index} aktiviert und gesichert`);
+            });
+        }
+
+        function forceRemoteAudioUnmute(stream) {
+            const audioTracks = stream.getAudioTracks();
+            
+            audioTracks.forEach(track => {
+                track.enabled = true;
+                console.log('🔊 Remote Audio-Track aktiviert');
+            });
+            
+            // Video-Element für Ton vorbereiten
+            elements.remoteVideo.muted = false;
+            elements.remoteVideo.volume = 1.0;
+            
+            // Autoplay für mobile Geräte
+            if ('playsInline' in elements.remoteVideo) {
+                elements.remoteVideo.playsInline = true;
+            }
+        }
+
+        function forceUnmuteRemote() {
+            if (!remoteStream) return;
+            
+            const audioTracks = remoteStream.getAudioTracks();
+            
+            if (audioTracks.length === 0) {
+                alert('Keine Audio-Tracks im empfangenen Stream gefunden');
+                return;
+            }
+            
+            // Alle Audio-Tracks aktivieren
+            audioTracks.forEach(track => {
+                track.enabled = true;
+                console.log('🔊 Erzwungene Aktivierung von Audio-Track');
+            });
+            
+            // Video-Element zurücksetzen
+            elements.remoteVideo.muted = false;
+            elements.remoteVideo.volume = 1.0;
+            
+            // Playback erzwingen
+            elements.remoteVideo.play().catch(e => {
+                console.log('Playback error:', e);
+                // User-Interaction simulieren
+                document.body.click();
+                setTimeout(() => elements.remoteVideo.play(), 100);
+            });
+            
+            elements.audioInfo.textContent = '🔊 Ton erzwingen aktiviert ✓';
+            alert('Ton wurde erzwungen! Falls immer noch kein Ton, überprüfe deine Lautsprecher.');
+        }
+
+        function startAudioMonitoring(stream) {
+            const audioTracks = stream.getAudioTracks();
+            if (audioTracks.length === 0) {
+                elements.audioLevel.textContent = '0%';
+                return;
+            }
+            
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                audioAnalyser = audioContext.createAnalyser();
+                source.connect(audioAnalyser);
+                
+                updateAudioLevel();
+            } catch (e) {
+                console.log('Audio monitoring error:', e);
+            }
+        }
+
+        function updateAudioLevel() {
+            if (!audioAnalyser) return;
+            
+            const dataArray = new Uint8Array(audioAnalyser.frequencyBinCount);
+            audioAnalyser.getByteFrequencyData(dataArray);
+            
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            const average = sum / dataArray.length;
+            const level = Math.min(100, (average / 128) * 100);
+            
+            elements.audioLevel.textContent = `${Math.round(level)}%`;
+            
+            // Farbige Anzeige
+            if (level > 50) {
+                elements.audioLevel.style.color = '#4CAF50';
+            } else if (level > 20) {
+                elements.audioLevel.style.color = '#FF9800';
+            } else {
+                elements.audioLevel.style.color = '#F44336';
+            }
+            
+            requestAnimationFrame(updateAudioLevel);
+        }
+
+        function monitorRemoteAudio(stream) {
+            const audioTracks = stream.getAudioTracks();
+            if (audioTracks.length === 0) {
+                elements.audioInfo.textContent = '⚠️ Kein Audio im Stream';
+                return;
+            }
+            
+            // Check alle 2 Sekunden ob Audio empfangen wird
+            const checkInterval = setInterval(() => {
+                if (!remoteStream) {
+                    clearInterval(checkInterval);
+                    return;
+                }
+                
+                const tracks = remoteStream.getAudioTracks();
+                if (tracks.length === 0) {
+                    elements.audioInfo.textContent = '⚠️ Keine Audio-Tracks mehr';
+                    return;
+                }
+                
+                const activeTracks = tracks.filter(track => track.readyState === 'live');
+                if (activeTracks.length === 0) {
+                    elements.audioInfo.textContent = '🔇 Audio-Tracks inaktiv';
+                }
+            }, 2000);
+            
+            // Cleanup wenn Stream endet
+            stream.oninactive = () => {
+                clearInterval(checkInterval);
+            };
+        }
+
+        function stopAudioMonitoring() {
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            audioAnalyser = null;
+            elements.audioLevel.textContent = '0%';
+            elements.audioLevel.style.color = '';
+        }
+
+        // ==================== AUDIO DEVICE MANAGEMENT ====================
+        async function loadAudioDevices() {
+            try {
+                // Erst Berechtigung anfragen
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioInputs = devices.filter(device => device.kind === 'audioinput');
+                
+                elements.audioInput.innerHTML = '<option value="">Standard-Mikrofon</option>';
+                
+                audioInputs.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Mikrofon ${elements.audioInput.options.length}`;
+                    elements.audioInput.appendChild(option);
+                });
+            } catch (error) {
+                console.log('Kein Zugriff auf Audio-Geräte:', error);
+            }
+        }
+
+        function refreshAudioDevices() {
+            loadAudioDevices();
+            alert('Audio-Geräte aktualisiert!');
+        }
+
+        // ==================== ACTIVE STREAMS MANAGEMENT ====================
+        function loadActiveStreams() {
+            socket.emit('get-streams');
+        }
+
+        function updateActiveStreamsList() {
+            elements.activeStreamsList.innerHTML = '';
+            
+            if (activeStreams.length === 0) {
+                elements.activeStreamsList.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #a0a0c0;">
+                        Keine aktiven Streams
+                    </div>
+                `;
+                return;
+            }
+            
+            activeStreams.forEach(stream => {
+                const div = document.createElement('div');
+                div.className = 'stream-item';
+                div.innerHTML = `
+                    <div class="stream-info">
+                        <h4>Stream ${stream.id.substring(0, 8)}...</h4>
+                        <div class="stream-id">${stream.id}</div>
+                        <small>${stream.viewerCount} Zuschauer</small>
+                    </div>
+                    <button class="btn btn-success" onclick="joinStreamById('${stream.id}')">
+                        🔗 Beitreten
+                    </button>
+                `;
+                elements.activeStreamsList.appendChild(div);
+            });
+        }
+
+        function updateStreamsContainer() {
+            elements.streamsContainer.innerHTML = '';
+            
+            if (activeStreams.length === 0) {
+                elements.streamsContainer.innerHTML = `
+                    <div class="text-center p-20">
+                        <div style="font-size: 48px; margin-bottom: 20px; opacity: 0.5;">📡</div>
+                        <p>Keine aktiven Streams gefunden</p>
+                        <small>Starte den ersten Stream oder aktualisiere die Liste</small>
+                    </div>
+                `;
+                return;
+            }
+            
+            activeStreams.forEach(stream => {
+                const ageMinutes = Math.floor(stream.age / 60000);
+                const div = document.createElement('div');
+                div.className = 'stream-item';
+                div.innerHTML = `
+                    <div class="stream-info">
+                        <h4>🎬 Live Stream</h4>
+                        <div class="stream-id">ID: ${stream.id}</div>
+                        <div style="margin-top: 10px; font-size: 14px;">
+                            <span>👥 ${stream.viewerCount} Zuschauer</span>
+                            <span style="margin-left: 15px;">⏱️ ${ageMinutes} min</span>
+                        </div>
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" onclick="joinStreamById('${stream.id}')">
+                            👁️ Ansehen
+                        </button>
+                        <button class="btn btn-secondary" onclick="copyToClipboard('${stream.id}')" style="margin-left: 10px;">
+                            📋 Kopieren
+                        </button>
+                    </div>
+                `;
+                elements.streamsContainer.appendChild(div);
+            });
+        }
+
+        function joinStreamById(streamId) {
+            elements.inputStreamId.value = streamId;
+            showSection('watch');
+            setTimeout(() => connectToStream(), 500);
+        }
+
+        // ==================== HELPER FUNKTIONEN ====================
+        function generateStreamId() {
+            const id = `stream_${Math.random().toString(36).substring(2, 10)}`;
+            currentStreamId = id;
+            elements.streamId.value = id;
+        }
+
+        function copyStreamId() {
+            elements.streamId.select();
+            document.execCommand('copy');
+            alert('Stream-ID kopiert! Teile diese mit Zuschauern.');
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('ID kopiert: ' + text);
+            });
+        }
+
+        function setStreamType(type) {
+            streamType = type;
+            elements.btnCamera.classList.toggle('active', type === 'camera');
+            elements.btnScreen.classList.toggle('active', type === 'screen');
+        }
+
+        function showSection(sectionId) {
+            // Alle Sections ausblenden
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.remove('active');
+            });
+            
+            // Alle Tabs deaktivieren
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Gewählte Section anzeigen
+            document.getElementById(sectionId).classList.add('active');
+            
+            // Tab aktivieren
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                if (btn.textContent.includes(getTabText(sectionId))) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // Bei streams Section automatisch laden
+            if (sectionId === 'streams') {
+                loadActiveStreams();
+            }
+        }
+
+        function getTabText(sectionId) {
+            const texts = {
+                'home': 'Home',
+                'broadcast': 'Streamen',
+                'watch': 'Zuschauen',
+                'streams': 'Aktive Streams'
+            };
+            return texts[sectionId] || '';
+        }
+
+        function updateConnectionStatus(status) {
+            const statusMap = {
+                'connected': '<span class="status status-online">Verbunden</span>',
+                'disconnected': '<span class="status status-offline">Getrennt</span>',
+                'connecting': '<span class="status status-broadcasting">Verbinde...</span>'
+            };
+            
+            if (statusMap[status]) {
+                // Update in allen relevanten Stellen
+                const elements = document.querySelectorAll('.status-indicator');
+                elements.forEach(el => {
+                    el.innerHTML = statusMap[status];
+                });
+            }
+        }
+
+        function setupEventListeners() {
+            // User-Interaction für Audio-Kontext
+            document.body.addEventListener('click', () => {
+                if (audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+            });
+            
+            // Stream ID automatisch generieren bei Focus
+            elements.streamId.addEventListener('focus', generateStreamId);
+            
+            // Enter-Taste für Stream-ID Eingabe
+            elements.inputStreamId.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    connectToStream();
+                }
+            });
+        }
+
+        // ==================== STARTUP ====================
+        console.log('🚀 Simple Stream App geladen');
+        console.log('🔧 Ton-Fixes aktiviert: Audio wird immer gesendet/empfangen');
+    </script>
+</body>
+</html>
