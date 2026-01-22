@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Streamer - Viewer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1><i class="fas fa-eye"></i> Screen Streamer - Viewer</h1>
+        
+        <div class="join-panel">
+            <h2>Stream beitreten</h2>
+            <div class="input-group">
+                <input type="text" id="roomIdInput" placeholder="Raum-ID eingeben">
+                <button onclick="joinStream()" class="btn primary">
+                    <i class="fas fa-play"></i> Beitreten
+                </button>
+            </div>
+            <p class="instruction">Gib die Raum-ID ein, die dir der Streamer mitgeteilt hat.</p>
+        </div>
+
+        <div class="stream-container">
+            <h3>Stream</h3>
+            <div class="video-container">
+                <video id="streamVideo" autoplay></video>
+                <div id="noStream" class="no-preview">
+                    <i class="fas fa-video-slash"></i>
+                    <p id="streamMessage">Gib eine Raum-ID ein, um einen Stream anzusehen</p>
+                </div>
+            </div>
+
+            <div class="viewer-controls">
+                <button onclick="toggleFullscreen()" class="btn secondary">
+                    <i class="fas fa-expand"></i> Vollbild
+                </button>
+                <button onclick="toggleAudio()" class="btn secondary">
+                    <i class="fas fa-volume-up"></i> Ton an
+                </button>
+                <button onclick="leaveStream()" class="btn danger">
+                    <i class="fas fa-sign-out-alt"></i> Verlassen
+                </button>
+            </div>
+        </div>
+
+        <div class="status">
+            <div id="statusIndicator" class="status-indicator">
+                <span class="status-dot"></span>
+                <span id="statusText">Nicht verbunden</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="viewer.js"></script>
+</body>
+</html>
