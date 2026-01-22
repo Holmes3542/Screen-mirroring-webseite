@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Streamer - Streamer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1><i class="fas fa-broadcast-tower"></i> Screen Streamer</h1>
+        
+        <div class="control-panel">
+            <div class="room-info">
+                <h2>Streamer Dashboard</h2>
+                <div class="room-id-display">
+                    <p>Deine Raum-ID: <span id="roomId">Lade...</span></p>
+                    <button onclick="copyRoomId()" class="btn secondary">
+                        <i class="fas fa-copy"></i> Kopieren
+                    </button>
+                </div>
+                <p class="instruction">Teile diese ID mit Personen, die deinen Stream sehen möchten.</p>
+            </div>
+
+            <div class="stream-controls">
+                <button id="startStreamBtn" class="btn primary" onclick="startStreaming()">
+                    <i class="fas fa-play"></i> Stream starten
+                </button>
+                <button id="stopStreamBtn" class="btn danger" onclick="stopStreaming()" disabled>
+                    <i class="fas fa-stop"></i> Stream stoppen
+                </button>
+                <button id="toggleAudioBtn" class="btn secondary" onclick="toggleAudio()">
+                    <i class="fas fa-microphone"></i> Ton aktiv
+                </button>
+                <button id="toggleFullscreenBtn" class="btn secondary" onclick="toggleFullscreen()">
+                    <i class="fas fa-expand"></i> Vollbild
+                </button>
+            </div>
+
+            <div class="viewer-count">
+                <i class="fas fa-users"></i>
+                <span id="viewerCount">0</span> Zuschauer
+            </div>
+        </div>
+
+        <div class="preview-container">
+            <h3>Stream-Vorschau</h3>
+            <div class="video-container">
+                <video id="previewVideo" autoplay muted></video>
+                <div id="noPreview" class="no-preview">
+                    <i class="fas fa-desktop"></i>
+                    <p>Stream-Vorschau erscheint hier</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="status">
+            <div id="statusIndicator" class="status-indicator">
+                <span class="status-dot"></span>
+                <span id="statusText">Bereit zum Starten</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="streamer.js"></script>
+</body>
+</html>
