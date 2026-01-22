@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎥 Simple Stream App</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <style>
+        /* Reset & Base */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header & Navigation */
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 20px 30px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .logo h1 {
+            font-size: 28px;
+            background: linear-gradient(90deg, #ff7e5f, #feb47b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .tab-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(90deg, #36d1dc, #5b86e5);
+            border-color: transparent;
+        }
+
+        /* Sections */
+        .section {
+            display: none;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Home Section */
+        .hero {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .hero h2 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            background: linear-gradient(90deg, #7f7fd5, #86a8e7, #91eae4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            font-size: 20px;
+            color: #a0a0c0;
+            max-width: 600px;
+            margin: 0 auto 40px;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 50px;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .feature-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .feature-card h3 {
+            font-size: 22px;
+            margin-bottom: 15px;
+            color: #86a8e7;
+        }
+
+        /* Broadcast & Watch Sections */
+        .section-content {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 30px;
+            margin-top: 20px;
+        }
+
+        .panel {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+
+        .panel h3 {
+            color: #86a8e7;
+            margin-bottom: 20px;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #a0a0c0;
+            font-weight: 500;
+        }
+
+        .input-with-btn {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 20px;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: white;
+            font-size: 16px;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #5b86e5;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        input[type="text"]::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(90deg, #36d1dc, #5b86e5);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(91, 134, 229, 0.3);
+        }
+
+        .btn-danger {
+            background: linear-gradient(90deg, #ff416c, #ff4b2b);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(90deg, #56ab2f, #a8e063);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        /* Button Groups */
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-group .btn {
+            flex: 1;
+        }
+
+        /* Video Containers */
+        .video-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        @media (max-width: 768px) {
+            .video-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .video-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .video-header {
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.5);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #000;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+            display: block;
+        }
+
+        .no-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 18px;
+        }
+
+        .no-video-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        /* Audio Controls */
+        .audio-controls {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .audio-row {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: #5b86e5;
+        }
+
+        /* Status Indicators */
+        .status {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-online {
+            background: rgba(56, 161, 105, 0.2);
+            color: #38a169;
+        }
+
+        .status-online::before {
+            background: #38a169;
+            animation: pulse 2s infinite;
+        }
+
+        .status-offline {
+            background: rgba(229, 62, 62, 0.2);
+            color: #e53e3e;
+        }
+
+        .status-offline::before {
+            background: #e53e3e;
+        }
+
+        .status-broadcasting {
+            background: rgba(237, 137, 54, 0.2);
+            color: #ed8936;
+        }
+
+        .status-broadcasting::before {
+            background: #ed8936;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #86a8e7;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #a0a0c0;
+        }
+
+        /* Active Streams List */
+        .streams-list {
+            margin-top: 30px;
+        }
+
+        .stream-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .stream-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .stream-info h4 {
+            color: #86a8e7;
+            margin-bottom: 5px;
+        }
+
+        .stream-id {
+            font-family: monospace;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        /* Footer */
+        footer {
+            margin-top: 50px;
+            text-align: center;
+            color: #a0a0c0;
+            font-size: 14px;
+            padding: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            .hero h2 {
+                font-size: 36px;
+            }
+            
+            .hero p {
+                font-size: 18px;
+            }
+            
+            .nav-tabs {
+                justify-content: center;
+            }
+            
+            .tab-btn {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+            
+            .input-with-btn {
+                flex-direction: column;
+            }
+            
+            .btn-group {
+                flex-direction: column;
+            }
+        }
+
+        /* Utility Classes */
+        .hidden {
+            display: none !important;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .mt-20 { margin-top: 20px; }
+        .mt-30 { margin-top: 30px; }
+        .mb-20 { margin-bottom: 20px; }
+        .mb-30 { margin-bottom: 30px; }
+        .p-20 { padding: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <div style="font-size: 36px;">🎥</div>
+                <h1>Simple Stream App</h1>
+            </div>
+            <div class="nav-tabs">
+                <button class="tab-btn active" onclick="showSection('home')">🏠 Home</button>
+                <button class="tab-btn" onclick="showSection('broadcast')">🎬 Streamen</button>
+                <button class="tab-btn" onclick="showSection('watch')">👁️ Zuschauen</button>
+                <button class="tab-btn" onclick="showSection('streams')">📡 Aktive Streams</button>
+            </div>
+        </header>
+
+        <!-- Home Section -->
+        <section id="home" class="section active">
+            <div class="hero">
+                <h2>Willkommen zur Stream App</h2>
+                <p>Streamen und Zuschauen in einer einfachen Web-App - Keine Installation nötig!</p>
+                
+                <div class="features">
+                    <div class="feature-card" onclick="showSection('broadcast')">
+                        <div class="feature-icon">🎬</div>
+                        <h3>Streamen</h3>
+                        <p>Starte deinen eigenen Stream mit Kamera oder Bildschirm teilen. Ton wird immer übertragen!</p>
+                    </div>
+                    
+                    <div class="feature-card" onclick="showSection('watch')">
+                        <div class="feature-icon">👁️</div>
+                        <h3>Zuschauen</h3>
+                        <p>Schau Streams von anderen an. Ton wird automatisch aktiviert, auch wenn der Streamer stumm ist!</p>
+                    </div>
+                    
+                    <div class="feature-card" onclick="showSection('streams')">
+                        <div class="feature-icon">📡</div>
+                        <h3>Aktive Streams</h3>
+                        <p>Siehe alle aktiven Streams und verbinde dich direkt.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Broadcast Section -->
+        <section id="broadcast" class="section">
+            <div class="section-content">
+                <h2>🎬 Stream Broadcast</h2>
+                
+                <div class="video-grid">
+                    <!-- Left Panel - Controls -->
+                    <div class="panel">
+                        <h3>🔧 Stream-Einstellungen</h3>
+                        
+                        <div class="form-group">
+                            <label>Stream-Typ auswählen:</label>
+                            <div class="btn-group">
+                                <button id="btnCamera" class="btn btn-secondary active" onclick="setStreamType('camera')">
+                                    📹 Kamera
+                                </button>
+                                <button id="btnScreen" class="btn btn-secondary" onclick="setStreamType('screen')">
+                                    🖥️ Bildschirm
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Deine Stream-ID:</label>
+                            <div class="input-with-btn">
+                                <input type="text" id="streamId" readonly>
+                                <button class="btn btn-secondary" onclick="copyStreamId()">
+                                    📋 Kopieren
+                                </button>
+                            </div>
+                            <small style="color: #a0a0c0; display: block; margin-top: 5px;">
+                                Teile diese ID mit Zuschauern
+                            </small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <div class="btn-group">
+                                <button id="btnStartStream" class="btn btn-primary" onclick="startStreaming()">
+                                    ▶️ Stream starten
+                                </button>
+                                <button id="btnStopStream" class="btn btn-danger" onclick="stopStreaming()" disabled>
+                                    ⏹️ Stream stoppen
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="stats">
+                            <div class="stat-item">
+                                <div class="stat-value" id="viewerCount">0</div>
+                                <div class="stat-label">Zuschauer</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">
+                                    <span id="streamStatus" class="status status-offline">Offline</span>
+                                </div>
+                                <div class="stat-label">Status</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="audioLevel">0%</div>
+                                <div class="stat-label">Audio Level</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right Panel - Video Preview -->
+                    <div class="panel">
+                        <h3>📹 Vorschau</h3>
+                        <div class="video-container">
+                            <div class="video-header">
+                                <span>Lokale Vorschau</span>
+                                <span id="previewStatus" class="status status-offline">Stopp</span>
+                            </div>
+                            <div class="video-wrapper">
+                                <video id="localVideo" muted autoplay playsinline></video>
+                                <div id="noLocalVideo" class="no-video">
+                                    <div class="no-video-icon">📹</div>
+                                    <p>Stream-Vorschau</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Audio Controls -->
+                <div class="audio-controls">
+                    <h3>🔊 Audio-Einstellungen (TON wird immer gesendet!)</h3>
+                    <div class="audio-row">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="enableAudio" checked>
+                            <label for="enableAudio">Ton aktivieren</label>
+                        </div>
+                        <select id="audioInput" style="padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);">
+                            <option value="">Standard-Mikrofon</option>
+                        </select>
+                        <button class="btn btn-secondary" onclick="refreshAudioDevices()">
+                            🔄 Audio-Geräte aktualisieren
+                        </button>
+                    </div>
+                    <div style="margin-top: 15px; color: #86a8e7; font-size: 14px;">
+                        ⚡ <strong>Ton-Fix aktiviert:</strong> Ton wird immer gesendet, auch wenn dein Gerät stumm ist!
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Watch Section -->
+        <section id="watch" class="section">
+            <div class="section-content">
+                <h2>👁️ Stream Zuschauen</h2>
+                
+                <div class="video-grid">
+                    <!-- Left Panel - Connection -->
+                    <div class="panel">
+                        <h3>🔗 Verbindung</h3>
+                        
+                        <div class="form-group">
+                            <label>Stream-ID eingeben:</label>
+                            <div class="input-with-btn">
+                                <input type="text" id="inputStreamId" placeholder="Stream-ID hier eingeben...">
+                                <button id="btnConnect" class="btn btn-success" onclick="connectToStream()">
+                                    🔗 Verbinden
+                                </button>
+                                <button id="btnDisconnect" class="btn btn-danger" onclick="disconnectFromStream()" disabled>
+                                    ✖️ Trennen
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Oder Stream aus Liste wählen:</label>
+                            <div id="activeStreamsList" style="max-height: 200px; overflow-y: auto; margin-top: 10px;">
+                                <!-- Active streams will be added here -->
+                            </div>
+                        </div>
+                        
+                        <div class="form-group text-center">
+                            <div id="connectionStatus" class="status status-offline">
+                                ● Nicht verbunden
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right Panel - Video Player -->
+                    <div class="panel">
+                        <h3>📺 Stream Player</h3>
+                        <div class="video-container">
+                            <div class="video-header">
+                                <span>Live Stream</span>
+                                <span id="playerStatus" class="status status-offline">Getrennt</span>
+                            </div>
+                            <div class="video-wrapper">
+                                <video id="remoteVideo" autoplay playsinline controls></video>
+                                <div id="noRemoteVideo" class="no-video">
+                                    <div class="no-video-icon">📺</div>
+                                    <p>Kein Stream verbunden</p>
+                                    <small>Gib eine Stream-ID ein oder wähle einen Stream</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Audio Playback Controls -->
+                <div class="audio-controls">
+                    <h3>🔊 Ton-Wiedergabe (Wird automatisch aktiviert!)</h3>
+                    <div class="audio-row">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="remoteAudioEnabled" checked>
+                            <label for="remoteAudioEnabled">Ton abspielen</label>
+                        </div>
+                        <button class="btn btn-primary" onclick="forceUnmuteRemote()" id="btnForceUnmute">
+                            🔊 Ton erzwingen
+                        </button>
+                        <div id="audioInfo" style="margin-left: auto; color: #a0a0c0; font-size: 14px;">
+                            Bereit für Ton-Übertragung
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; color: #86a8e7; font-size: 14px;">
+                        ⚡ <strong>Ton-Fix aktiviert:</strong> Ton wird immer empfangen, auch wenn der Streamer stumm ist!
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Active Streams Section -->
+        <section id="streams" class="section">
+            <div class="section-content">
+                <h2>📡 Aktive Streams</h2>
+                
+                <div class="panel">
+                    <h3>🔍 Verfügbare Streams</h3>
+                    
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="loadActiveStreams()">
+                            🔄 Streams aktualisieren
+                        </button>
+                        <button class="btn btn-secondary" onclick="showSection('broadcast')">
+                            🎬 Eigenen Stream starten
+                        </button>
+                    </div>
+                    
+                    <div id="streamsContainer" class="streams-list">
+                        <div class="text-center p-20">
+                            <div style="font-size: 48px; margin-bottom: 20px; opacity: 0.5;">📡</div>
+                            <p>Keine aktiven Streams gefunden</p>
+                            <small>Starte den ersten Stream oder aktualisiere die Liste</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Footer -->
+        <footer>
+            <p>🎥 Simple Stream App | WebRTC Streaming mit Ton-Support | Deployed on Render</p>
+            <p style="margin-top: 10px; font-size: 12px; color: rgba(255,255,255,0.4);">
+                ⚡ Ton wird immer übertragen und empfangen, egal ob das Streaming-Gerät stumm ist!
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // ==================== GLOBALE VARIABLEN ====================
+        let socket = null;
+        let localStream = null;
+        let remoteStream = null;
+        let peerConnections = new Map();
+        let currentStreamId = null;
+        let isBroadcasting = false;
+        let isWatching = false;
+        let viewerCount = 0;
+        let streamType = 'camera';
+        let audioContext = null;
+        let audioAnalyser = null;
+        let activeStreams = [];
+
+        // ==================== DOM-ELEMENTE ====================
+        const elements = {
+            // Videos
+            localVideo: document.getElementById('localVideo'),
+            remoteVideo: document.getElementById('remoteVideo'),
+            noLocalVideo: document.getElementById('noLocalVideo'),
+            noRemoteVideo: document.getElementById('noRemoteVideo'),
+            
+            // Status
+            streamStatus: document.getElementById('streamStatus'),
+            previewStatus: document.getElementById('previewStatus'),
+            connectionStatus: document.getElementById('connectionStatus'),
+            playerStatus: document.getElementById('playerStatus'),
+            
+            // Buttons
+            btnStartStream: document.getElementById('btnStartStream'),
+            btnStopStream: document.getElementById('btnStopStream'),
+            btnConnect: document.getElementById('btnConnect'),
+            btnDisconnect: document.getElementById('btnDisconnect'),
+            
+            // Inputs
+            streamId: document.getElementById('streamId'),
+            inputStreamId: document.getElementById('inputStreamId'),
+            enableAudio: document.getElementById('enableAudio'),
+            remoteAudioEnabled: document.getElementById('remoteAudioEnabled'),
+            audioInput: document.getElementById('audioInput'),
+            
+            // Stats
+            viewerCount: document.getElementById('viewerCount'),
+            audioLevel: document.getElementById('audioLevel'),
+            audioInfo: document.getElementById('audioInfo'),
+            
+            // Containers
+            activeStreamsList: document.getElementById('activeStreamsList'),
+            streamsContainer: document.getElementById('streamsContainer')
+        };
+
+        // ==================== INITIALISIERUNG ====================
+        window.addEventListener('DOMContentLoaded', () => {
+            initSocket();
+            generateStreamId();
+            loadAudioDevices();
+            setupEventListeners();
+            
+            // Für mobile Geräte
+            if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+                elements.localVideo.setAttribute('playsinline', '');
+                elements.localVideo.setAttribute('webkit-playsinline', '');
+                elements.remoteVideo.setAttribute('playsinline', '');
+                elements.remoteVideo.setAttribute('webkit-playsinline', '');
+            }
+        });
+
+        // ==================== SOCKET.IO ====================
+        function initSocket() {
+            socket = io();
+            
+            socket.on('connect', () => {
+                console.log('✅ Mit Server verbunden:', socket.id);
+                updateConnectionStatus('connected');
+            });
+            
+            socket.on('stream-started', (data) => {
+                console.log('🎬 Stream gestartet:', data.streamId);
+                elements.streamStatus.innerHTML = '<span class="status status-broadcasting">Live</span>';
+                elements.previewStatus.innerHTML = '<span class="status status-broadcasting">Live</span>';
+            });
+            
+            socket.on('stream-joined', (data) => {
+                console.log('👁️ Stream beigetreten:', data.streamId);
+                elements.playerStatus.innerHTML = '<span class="status status-broadcasting">Live</span>';
+            });
+            
+            socket.on('viewer-joined', (data) => {
+                console.log('👤 Neuer Viewer:', data.viewerId);
+                viewerCount++;
+                elements.viewerCount.textContent = viewerCount;
+                createPeerConnection(data.viewerId, true);
+            });
+            
+            socket.on('stream-ended', () => {
+                console.log('🛑 Stream beendet');
+                if (isWatching) {
+                    disconnectFromStream();
+                    alert('Der Stream wurde vom Broadcaster beendet.');
+                }
+            });
+            
+            socket.on('webrtc-signal', async (data) => {
+                console.log('📡 WebRTC Signal erhalten:', data.type, 'von', data.from);
+                
+                if (data.type === 'offer') {
+                    await createPeerConnection(data.from, false);
+                    const peer = peerConnections.get(data.from);
+                    if (peer) peer.signal(data.signal);
+                } else if (data.type === 'answer') {
+                    const peer = peerConnections.get(data.from);
+                    if (peer) peer.signal(data.signal);
+                } else if (data.type === 'candidate') {
+                    const peer = peerConnections.get(data.from);
+                    if (peer) peer.signal(data.signal);
+                }
+            });
+            
+            socket.on('
