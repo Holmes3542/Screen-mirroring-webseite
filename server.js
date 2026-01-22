@@ -1,21 +1,21 @@
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const { Server } = require('socket.io');
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
+const io = new Server(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
   }
 });
 
-// Serve static files
+// Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
-// API Routes
+// Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -24,16 +24,30 @@ app.get('/viewer', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'viewer.html'));
 });
 
-// Socket.io for signaling
+// Health check endpoint for Render
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    message: 'Screen Streamer is running',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Socket.io signaling
 const rooms = new Map();
 
 io.on('connection', (socket) => {
-  console.log('New client connected:', socket.id);
+  console.log('Client connected:', socket.id);
 
   socket.on('join-as-streamer', (roomId) => {
     socket.join(roomId);
-    rooms.set(roomId, { streamer: socket.id, viewers: [] });
+    rooms.set(roomId, { 
+      streamer: socket.id, 
+      viewers: [],
+      createdAt: new Date().toISOString()
+    });
     console.log(`Streamer ${socket.id} created room ${roomId}`);
+    socket.emit('room-created', roomId);
   });
 
   socket.on('join-as-viewer', (roomId) => {
@@ -43,8 +57,9 @@ io.on('connection', (socket) => {
       room.viewers.push(socket.id);
       socket.to(room.streamer).emit('viewer-joined', socket.id);
       console.log(`Viewer ${socket.id} joined room ${roomId}`);
+      socket.emit('room-joined', roomId);
     } else {
-      socket.emit('room-not-found');
+      socket.emit('room-not-found', { roomId });
     }
   });
 
@@ -77,10 +92,13 @@ io.on('connection', (socket) => {
       if (room.streamer === socket.id) {
         io.to(roomId).emit('streamer-disconnected');
         rooms.delete(roomId);
+        console.log(`Room ${roomId} deleted (streamer disconnected)`);
       } else {
-        room.viewers = room.viewers.filter(viewerId => viewerId !== socket.id);
-        if (room.viewers.length === 0) {
-          // Optional: Keep room alive for streamer
+        const viewerIndex = room.viewers.indexOf(socket.id);
+        if (viewerIndex > -1) {
+          room.viewers.splice(viewerIndex, 1);
+          socket.to(room.streamer).emit('viewer-left', socket.id);
+          console.log(`Viewer ${socket.id} left room ${roomId}`);
         }
       }
     }
@@ -89,5 +107,7 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📺 Open http://localhost:${PORT} to start streaming`);
+  console.log(`👁️  Open http://localhost:${PORT}/viewer to watch stream`);
 });
