@@ -2,10 +2,16 @@ services:
   - type: web
     name: screen-streamer
     env: node
-    buildCommand: npm install
-    startCommand: npm start
+    buildCommand: |
+      echo "=== BUILD START ==="
+      echo "Current directory: $(pwd)"
+      echo "Files in directory:"
+      ls -la
+      echo "Looking for package.json..."
+      find / -name "package.json" 2>/dev/null | head -5
+      echo "=== Installing dependencies ==="
+      npm install
+    startCommand: node server.js
     envVars:
       - key: NODE_VERSION
-        value: 18.17.0
-    autoDeploy: true
-    plan: free
+        value: 18.x
